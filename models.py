@@ -1,3 +1,7 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from cv2 import normalize
 from utils.google_utils import *
 from utils.layers import *
 from utils.parse_config import *
@@ -17,12 +21,14 @@ def create_modules(module_defs, img_size, cfg):
 
     for i, mdef in enumerate(module_defs):
         modules = nn.Sequential()
-
+        # construct convolutional block
         if mdef['type'] == 'convolutional':
             bn = mdef['batch_normalize']
+            # ln = mdef['layer_normalize']
             filters = mdef['filters']
             k = mdef['size']  # kernel size
             stride = mdef['stride'] if 'stride' in mdef else (mdef['stride_y'], mdef['stride_x'])
+            activation = mdef.get('activation')
             if isinstance(k, int):  # single-size conv
                 modules.add_module('Conv2d', nn.Conv2d(in_channels=output_filters[-1],
                                                        out_channels=filters,
@@ -37,29 +43,34 @@ def create_modules(module_defs, img_size, cfg):
                                                           k=k,
                                                           stride=stride,
                                                           bias=not bn))
-
+            # batch_normalization
             if bn:
                 modules.add_module('BatchNorm2d', nn.BatchNorm2d(filters, momentum=0.03, eps=1E-4))
+            # layer_normalization
+            # elif ln:
+            #     modules.add_module('LayerNorm2d', LayerNorm(filters, eps=1e-6, data_format="channel_first"))
             else:
-                routs.append(i)  # detection output (goes into yolo layer)
+                if activation == 'linear':
+                    routs.append(i)  # detection output (goes into yolo layer)
 
-            if mdef['activation'] == 'leaky':  # activation study https://github.com/ultralytics/yolov3/issues/441
+            if activation == 'leaky':  # activation study https://github.com/ultralytics/yolov3/issues/441
                 modules.add_module('activation', nn.LeakyReLU(0.1, inplace=True))
-            elif mdef['activation'] == 'swish':
+            elif activation == 'swish':
                 modules.add_module('activation', Swish())
-            elif mdef['activation'] == 'h_swish':
+            elif activation == 'h_swish':
                 modules.add_module('activation', HardSwish())
-            elif mdef['activation'] == 'mish':
+            elif activation == 'mish':
                 modules.add_module('activation', Mish())
-            elif mdef['activation'] == 'relu6':
+            elif activation == 'relu6':
                 modules.add_module('activation', ReLU6())
-            elif mdef['activation'] == 'relu':
+            elif activation == 'relu':
                 modules.add_module('activation', nn.ReLU(inplace=True))
-            elif mdef['activation'] == 'frelu':
+            elif activation == 'frelu':
                 modules.add_module('activation', FReLU(c1=output_filters[-1]))
 
         elif mdef['type'] == 'depthwise':
             bn = int(mdef['batch_normalize'])
+            # ln = int(mdef['layer_normalize'])
             filters = int(mdef['filters'])
             kernel_size = int(mdef['size'])
             pad = (kernel_size - 1) // 2 if int(mdef['pad']) else 0
@@ -104,6 +115,16 @@ def create_modules(module_defs, img_size, cfg):
                 modules.add_module('MaxPool2d', maxpool)
             else:
                 modules = maxpool
+        
+        elif mdef['type'] == 'avgpool':
+            k = mdef['size'] # kernel size
+            stride = mdef['stride']
+            avgpool = nn.AvgPool2d(kernel_size=k, stride=stride, padding=(k - 1) // 2)
+            if k == 2 and stride == 1: # yolov3-tiny
+                modules.add_module('ZeroPad2d', nn.ZeroPad2d((0, 1, 0, 1)))
+                modules.add_module('MaxPool2d', avgpool)
+            else:
+                modules = avgpool
 
         elif mdef['type'] == 'upsample':
             if ONNX_EXPORT:  # explicitly state size, avoid scale_factor
@@ -652,6 +673,36 @@ class RouteGroup(nn.Module):
         else:
             out = torch.chunk(outputs[self.layers[0]], self.groups, dim=1)
             return out[self.group_id]
+
+class LayerNorm(nn.Module):
+    """
+        Custom LayerNorm support two formats of input
+        channel_last format except input as [B, H, W, C]
+        channel_first(default) format except input as [B, C, H, W]
+    """
+    def __init__(self, normalize_shape, eps=1e-6, data_format="channel_first"):
+        super(LayerNorm, self).__init__()
+        self.weights = nn.Parameter(torch.ones(normalize_shape))
+        self.bias = nn.Parameter(torch.zeros(normalize_shape))
+        self.normalize_shape = (normalize_shape, )
+        self.eps = eps
+        self.data_format = data_format
+
+    def forward(self, x):
+        if self.data_format == "channel_last":
+            return F.layer_norm(x, self.normalize_shape, self.weights, self.bias, self.eps)
+        
+        elif self.data_format == "channel_first":
+            u = x.mean(1, keepdim=True)
+            s = (x - u).pow(2).mean(1, keepdim=True)
+            x = (x - u) / torch.sqrt(s + self.eps)
+            x = self.weight[:, None, None] * x + self.bias[:, None, None]
+            return x
+
+
+
+    
+
 
 
 # ShuffleNetv2
