@@ -80,6 +80,7 @@ def test(cfg,
         imgs = imgs.to(device).float() / 255.0  # uint8 to float32, 0 - 255 to 0.0 - 1.0
         targets = targets.to(device)
         nb, _, height, width = imgs.shape  # batch size, channels, height, width
+        print(height, width)
         whwh = torch.Tensor([width, height, width, height]).to(device)
 
         # Plot images with bounding boxes

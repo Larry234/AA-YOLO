@@ -6,6 +6,9 @@ from utils.google_utils import *
 from utils.layers import *
 from utils.parse_config import *
 
+# New pooling method adaPool
+from adaPool import AdaPool2d
+
 ONNX_EXPORT = False
 
 
@@ -13,7 +16,10 @@ def create_modules(module_defs, img_size, cfg):
     # Constructs module list of layer blocks from module configuration in module_defs
 
     img_size = [img_size] * 2 if isinstance(img_size, int) else img_size  # expand if necessary
-    _ = module_defs.pop(0)  # cfg training hyperparams (unused)
+    hyp = module_defs.pop(0)  # cfg training hyperparams (unused)
+    h = hyp['height']
+    w = hyp['width']
+    features_shape = [(h,w)] # record feature map size (for adapool)
     output_filters = [3]  # input channels
     module_list = nn.ModuleList()
     routs = []  # list of layers which rout to deeper layers
@@ -28,7 +34,15 @@ def create_modules(module_defs, img_size, cfg):
             filters = mdef['filters']
             k = mdef['size']  # kernel size
             stride = mdef['stride'] if 'stride' in mdef else (mdef['stride_y'], mdef['stride_x'])
+            pad = k // 2 if mdef['pad'] else 0
             activation = mdef.get('activation')
+
+            # caculate output shape of convolution
+            in_h, in_w = features_shape[-1]
+            out_h = ((in_h + 2*pad - k) // stride) + 1
+            out_w = ((in_w + 2*pad - k) // stride) + 1
+            features_shape.append((out_h, out_w))
+            
             if isinstance(k, int):  # single-size conv
                 modules.add_module('Conv2d', nn.Conv2d(in_channels=output_filters[-1],
                                                        out_channels=filters,
@@ -109,6 +123,11 @@ def create_modules(module_defs, img_size, cfg):
         elif mdef['type'] == 'maxpool':
             k = mdef['size']  # kernel size
             stride = mdef['stride']
+
+            # calculate output shape
+            in_h, in_w = features_shape[-1]
+            features_shape.append(( (in_h-k)//2+1, (in_w-k)//2+1 ))
+
             maxpool = nn.MaxPool2d(kernel_size=k, stride=stride, padding=(k - 1) // 2)
             if k == 2 and stride == 1:  # yolov3-tiny
                 modules.add_module('ZeroPad2d', nn.ZeroPad2d((0, 1, 0, 1)))
@@ -119,19 +138,40 @@ def create_modules(module_defs, img_size, cfg):
         elif mdef['type'] == 'avgpool':
             k = mdef['size'] # kernel size
             stride = mdef['stride']
+
+            # calculate output shape
+            in_h, in_w = features_shape[-1]
+            features_shape.append(( (in_h-k)//2+1, (in_w-k)//2+1 ))
+
             avgpool = nn.AvgPool2d(kernel_size=k, stride=stride, padding=(k - 1) // 2)
             if k == 2 and stride == 1: # yolov3-tiny
                 modules.add_module('ZeroPad2d', nn.ZeroPad2d((0, 1, 0, 1)))
                 modules.add_module('MaxPool2d', avgpool)
             else:
                 modules = avgpool
+        
+        elif mdef['type'] == 'adapool': # Exponential Adaptive Pooling 
+            k = mdef['size'] #kernel size
+            stride = mdef['stride'] 
+
+            # calculate output shape
+            in_h, in_w = features_shape[-1]
+            out_h = (in_h-k)//2+1
+            out_w = (in_w-k)//2+1
+            features_shape.append((out_h, out_w))
+
+            adapool = AdaPool2d(kernel_size=k, stride=stride, beta=(1, 1))
+            modules = adapool
 
         elif mdef['type'] == 'upsample':
+            in_h, in_w = features_shape[-1]
             if ONNX_EXPORT:  # explicitly state size, avoid scale_factor
                 g = (yolo_index + 1) * 2 / 32  # gain
                 modules = nn.Upsample(size=tuple(int(x * g) for x in img_size))  # img_size = (320, 192)
+                features_shape.append(tuple(int(x * g) for x in img_size))
             else:
                 modules = nn.Upsample(scale_factor=mdef['stride'])
+                features_shape.append((in_h * mdef['stride'], in_w * mdef['stride']))
 
         elif mdef['type'] == 'route':  # nn.Sequential() placeholder for 'route' layer
             layers = mdef['layers']
@@ -167,6 +207,10 @@ def create_modules(module_defs, img_size, cfg):
             init_weight = mdef['alpha'] if 'alpha' in mdef else mdef['beta'] if 'beta' in mdef else 0
             input_channel = output_filters[-1]
             output_channel= input_channel
+
+            # calculate output shape
+            # in_h, in_w = features_shape[-1]
+
             modules.add_module('depthwise_pointwise_conv',
                                depthwise_pointwise_conv(
                                    nin = input_channel,
@@ -219,6 +263,7 @@ def create_modules(module_defs, img_size, cfg):
         # Register module list and number of output filters
         module_list.append(modules)
         output_filters.append(filters)
+
 
     routs_binary = [False] * (i + 1)
     for i in routs:
