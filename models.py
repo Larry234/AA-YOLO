@@ -7,7 +7,7 @@ from utils.layers import *
 from utils.parse_config import *
 
 # New pooling method adaPool
-from adaPool import AdaPool2d
+from adaPool import AdaPool2d, EMPool2d
 
 ONNX_EXPORT = False
 
@@ -161,7 +161,20 @@ def create_modules(module_defs, img_size, cfg):
             features_shape.append((out_h, out_w))
 
             adapool = AdaPool2d(kernel_size=k, stride=stride, beta=(1, 1))
-            modules = adapool
+            modules = adapool 
+
+        elif mdef['type'] == 'empool': # Exponential Maximum Pooling 
+            k = mdef['size'] #kernel size
+            stride = mdef['stride'] 
+
+            # calculate output shape
+            in_h, in_w = features_shape[-1]
+            out_h = (in_h-k)//2+1
+            out_w = (in_w-k)//2+1
+            features_shape.append((out_h, out_w))
+
+            empool = EMPool2d(kernel_size=k, stride=stride)
+            modules = empool
 
         elif mdef['type'] == 'upsample':
             in_h, in_w = features_shape[-1]
