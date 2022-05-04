@@ -276,6 +276,14 @@ def train():
             else:
                 loss.backward()
 
+            # print gradient
+            for name, param in model.named_parameters():
+                print(name, param.grad)
+            
+            # clip gradient
+            if opt.grad_clip:
+                torch.nn.utils.clip_grad.clip_grad_norm_(model.parameters(), max_norm=2.0)
+
             # Optimize
             if ni % accumulate == 0:
                 optimizer.step()
@@ -392,6 +400,7 @@ if __name__ == '__main__':
     parser.add_argument('--device', default='', help='device id (i.e. 0 or 0,1 or cpu)')
     parser.add_argument('--adam', action='store_true', help='use adam optimizer')
     parser.add_argument('--single-cls', action='store_true', help='train as single-class dataset')
+    parser.add_argument('--grad-clip', action='store_true', help='gradient clipping')
     opt = parser.parse_args()
     opt.weights = last if opt.resume else opt.weights
     check_git_status()
