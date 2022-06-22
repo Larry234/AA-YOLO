@@ -7,7 +7,7 @@ from utils.layers import *
 from utils.parse_config import *
 
 # New pooling method adaPool
-from adaPool import AdaPool2d
+# from adaPool import AdaPool2d
 
 ONNX_EXPORT = False
 
