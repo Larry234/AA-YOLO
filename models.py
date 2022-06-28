@@ -8,6 +8,7 @@ from utils.parse_config import *
 
 # New pooling method adaPool
 from adaPool import AdaPool2d, EMPool2d
+from pooling import EMPool2d_
 
 ONNX_EXPORT = False
 
@@ -165,7 +166,8 @@ def create_modules(module_defs, img_size, cfg):
 
         elif mdef['type'] == 'empool': # Exponential Maximum Pooling 
             k = mdef['size'] #kernel size
-            stride = mdef['stride'] 
+            stride = mdef['stride']
+            temperature = float(mdef['temperature'])
 
             # calculate output shape
             in_h, in_w = features_shape[-1]
@@ -173,7 +175,7 @@ def create_modules(module_defs, img_size, cfg):
             out_w = (in_w-k)//2+1
             features_shape.append((out_h, out_w))
 
-            empool = EMPool2d(kernel_size=k, stride=stride)
+            empool = EMPool2d_(kernel_size=k, stride=stride, temperature=temperature)
             modules = empool
 
         elif mdef['type'] == 'upsample':

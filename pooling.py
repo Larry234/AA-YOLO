@@ -3,13 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules.utils import _pair, _quadruple
 
-class EMPool2d(nn.Module):
-    def __init__(self, kernel_size=3, stride=1, padding=0, temperature=1):
-        super(EMPool2d, self).__init__()
+class EMPool2d_(nn.Module):
+    def __init__(self, kernel_size=3, stride=1, padding=0, temperature=1, same=False):
+        super(EMPool2d_, self).__init__()
         self.k = _pair(kernel_size)
         self.stride = _pair(stride)
         self.padding = _quadruple(padding) # convert to l, r, t, b
         self.t = temperature
+        self.same = same
 
     def _padding(self, x):
         if self.same:
@@ -43,7 +44,16 @@ class EMPool2d(nn.Module):
         # generate pool weights
         w = w.view(B, C, o_h, o_w, self.k[0], self.k[1])
         
-        return w * x
+        return torch.sum((w * x).view(B, C, o_h, o_w, -1), dim=-1)
+
+
+class TopPooling2d(nn.Module):
+    def __init__(self, kernel_size, stride, padding=0, same=False):
+        super(TopPooling2d, self).__init_()
+        self.kernel_size = _pair(kernel_size)
+        self.stride = _pair(stride)
+        self.padding = _quadruple(padding)
+        self.same = same
 
 
 
