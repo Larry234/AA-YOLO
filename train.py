@@ -414,6 +414,9 @@ if __name__ == '__main__':
     if device.type == 'cpu':
         mixed_precision = False
 
+    # make directory for new experiment
+    os.makedirs(os.path.join('weights', opt.name), exist_ok=True)
+    
     # scale hyp['obj'] by img_size (evolved at 320)
     # hyp['obj'] *= opt.img_size[0] / 320.
 
@@ -422,9 +425,6 @@ if __name__ == '__main__':
         print('Start Tensorboard with "tensorboard --logdir=runs", view at http://localhost:6006/')
         tb_writer = SummaryWriter(comment=opt.name)
         train()  # train normally
-
-    if not os.path.exists(os.path.join('weights', opt.name)):
-        os.mkdir(os.path.join('weights', opt.name))
 
     else:  # Evolve hyperparameters (optional)
         opt.notest, opt.nosave = True, True  # only test/save final epoch

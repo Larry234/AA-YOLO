@@ -7,7 +7,8 @@ from utils.layers import *
 from utils.parse_config import *
 
 # New pooling method adaPool
-# from adaPool import AdaPool2d
+from pooling import EMPool2d_
+>>>>>>> 8d3ecf7198c6f6c0a5a3364f9db2a5b2de39f643
 
 ONNX_EXPORT = False
 
@@ -150,22 +151,23 @@ def create_modules(module_defs, img_size, cfg):
             else:
                 modules = avgpool
         
-        elif mdef['type'] == 'adapool': # Exponential Adaptive Pooling 
-            k = mdef['size'] #kernel size
-            stride = mdef['stride'] 
+#         elif mdef['type'] == 'adapool': # Exponential Adaptive Pooling 
+#             k = mdef['size'] #kernel size
+#             stride = mdef['stride'] 
 
-            # calculate output shape
-            in_h, in_w = features_shape[-1]
-            out_h = (in_h-k)//2+1
-            out_w = (in_w-k)//2+1
-            features_shape.append((out_h, out_w))
+#             # calculate output shape
+#             in_h, in_w = features_shape[-1]
+#             out_h = (in_h-k)//2+1
+#             out_w = (in_w-k)//2+1
+#             features_shape.append((out_h, out_w))
 
-            adapool = AdaPool2d(kernel_size=k, stride=stride, beta=(1, 1))
-            modules = adapool 
+#             adapool = AdaPool2d(kernel_size=k, stride=stride, beta=(1, 1))
+#             modules = adapool 
 
         elif mdef['type'] == 'empool': # Exponential Maximum Pooling 
             k = mdef['size'] #kernel size
-            stride = mdef['stride'] 
+            stride = mdef['stride']
+            temperature = float(mdef['temperature'])
 
             # calculate output shape
             in_h, in_w = features_shape[-1]
@@ -173,7 +175,7 @@ def create_modules(module_defs, img_size, cfg):
             out_w = (in_w-k)//2+1
             features_shape.append((out_h, out_w))
 
-            empool = EMPool2d(kernel_size=k, stride=stride)
+            empool = EMPool2d_(kernel_size=k, stride=stride, temperature=temperature)
             modules = empool
 
         elif mdef['type'] == 'upsample':
