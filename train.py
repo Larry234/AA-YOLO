@@ -276,6 +276,14 @@ def train():
             else:
                 loss.backward()
 
+            # print gradient
+            # for name, param in model.named_parameters():
+            #     print(name, param.grad)
+            
+            # clip gradient
+            if opt.grad_clip:
+                torch.nn.utils.clip_grad.clip_grad_norm_(model.parameters(), max_norm=0.1)
+
             # Optimize
             if ni % accumulate == 0:
                 optimizer.step()
@@ -297,6 +305,10 @@ def train():
                     # tb_writer.add_graph(model, imgs)  # add model to tensorboard
 
             # end batch ------------------------------------------------------------------------------------------------
+        
+        # plot learning rate
+        for param_group in optimizer.param_groups:
+            lr = param_group['lr']
 
         # Update scheduler
         scheduler.step()
@@ -345,9 +357,9 @@ def train():
                          'optimizer': None if final_epoch else optimizer.state_dict()}
 
             # Save last, best and delete
-            torch.save(chkpt, last)
+            torch.save(chkpt, os.path.join('weights', opt.name, 'last.pt'))
             if (best_fitness == fi) and not final_epoch:
-                torch.save(chkpt, best)
+                torch.save(chkpt, os.path.join('weights', opt.name, 'best.pt'))
             del chkpt
 
         # end epoch ----------------------------------------------------------------------------------------------------
@@ -392,6 +404,7 @@ if __name__ == '__main__':
     parser.add_argument('--device', default='', help='device id (i.e. 0 or 0,1 or cpu)')
     parser.add_argument('--adam', action='store_true', help='use adam optimizer')
     parser.add_argument('--single-cls', action='store_true', help='train as single-class dataset')
+    parser.add_argument('--grad-clip', action='store_true', help='gradient clipping')
     opt = parser.parse_args()
     opt.weights = last if opt.resume else opt.weights
     check_git_status()
@@ -409,6 +422,9 @@ if __name__ == '__main__':
         print('Start Tensorboard with "tensorboard --logdir=runs", view at http://localhost:6006/')
         tb_writer = SummaryWriter(comment=opt.name)
         train()  # train normally
+
+    if not os.path.exists(os.path.join('weights', opt.name)):
+        os.mkdir(os.path.join('weights', opt.name))
 
     else:  # Evolve hyperparameters (optional)
         opt.notest, opt.nosave = True, True  # only test/save final epoch
