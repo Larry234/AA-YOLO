@@ -8,7 +8,6 @@ from utils.parse_config import *
 
 # New pooling method adaPool
 from pooling import EMPool2d_
->>>>>>> 8d3ecf7198c6f6c0a5a3364f9db2a5b2de39f643
 
 ONNX_EXPORT = False
 

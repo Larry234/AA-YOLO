@@ -55,6 +55,37 @@ class TopPooling2d(nn.Module):
         self.padding = _quadruple(padding)
         self.same = same
 
+    def _padding(self, x):
+        if self.same:
+            ih, iw = x.size()[2:]
+            if ih % self.stride[0] == 0:
+                ph = max(self.k[0] - self.stride[0], 0)
+            else:
+                ph = max(self.k[0] - (ih % self.stride[0]), 0)
+
+            if iw % self.stride[1] == 0:
+                pw = max(self.k[1] - self.stride[1], 0)
+            else:
+                pw = max(self.k[1] - (iw % self.stride[1]), 0)
+            
+            pl = pw // 2
+            pr = pw - pl
+            pt = ph // 2
+            pb = ph - pt
+            padding = (pl, pr, pt, pb)
+
+        else:
+            padding = self.padding
+
+        return padding
+
+    def forward(self, x):
+        x = F.pad(x, self._padding(x), mode='reflect')
+        x = x.unfold(2, self.kernel_size[0], self.stride[0]).unfold(3, self.kernel_size[1], self.kernel_size[1])
+        B, C, o_h, o_w = x.size()[:4]
+        x = x.contiguous().view(B, C, o_h, o_w, -1)
+    
+
 
 
 
